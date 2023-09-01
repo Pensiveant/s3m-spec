@@ -4,6 +4,7 @@ import S3MLayerCache from './S3MLayerCache.js';
 import OperationType from './Enum/OperationType.js';
 import Style3D from './Style3D.js';
 
+// 参考: https://blog.csdn.net/nan620403/article/details/128329989
 function S3MTilesLayer(options) {
     options = Cesium.defaultValue(options, Cesium.defaultValue.EMPTY_OBJECT);
     Cesium.Check.defined('options.url', options.url);
@@ -16,10 +17,10 @@ function S3MTilesLayer(options) {
     this._baseResource = undefined;
     this.modelMatrix = new Cesium.Matrix4();
     this.invModelMatrix = new Cesium.Matrix4();
-    this._visibleDistanceMax = Cesium.defaultValue(options.maxVisibleDistance, Number.MAX_VALUE);
-    this._visibleDistanceMin = Cesium.defaultValue(options.minVisibleDistance, 0.0);
-    this._lodRangeScale = Cesium.defaultValue(options.lodRangeScale, 1.0);
-    this._selectedColor = new Cesium.Color(0.7, 0.7, 1.0, 1.0);
+    this._visibleDistanceMax = Cesium.defaultValue(options.maxVisibleDistance, Number.MAX_VALUE); // 最大可见距离值，单位为米
+    this._visibleDistanceMin = Cesium.defaultValue(options.minVisibleDistance, 0.0); // 最小可见距离值，单位为米
+    this._lodRangeScale = Cesium.defaultValue(options.lodRangeScale, 1.0); // 图层层级缩放比例系数：该值默认为1，如果想要在远距离时加载精细层LOD，将该值调小，同时会导致加载数据量变大；如果对场景性能要求高，将该值调大，同时会导致数据相对模糊。
+    this._selectedColor = new Cesium.Color(0.7, 0.7, 1.0, 1.0);  // 选中模型，高亮颜色
     this.fileType = undefined;
     this._position = undefined;
     this._rectangle = undefined;
@@ -131,6 +132,11 @@ Cesium.Scene.prototype.pick = function(windowPosition, width, height) {
     return picked;
 };
 
+/**
+ * 1. 请求config文件并解析
+ * 2. 初始化所有根节点瓦片，并存储在_cache和_rootTiles属性中
+ * @param {*} url
+ */
 S3MTilesLayer.prototype.loadConfig = function(url) {
     let that = this;
     Cesium.when(url)
@@ -365,6 +371,11 @@ S3MTilesLayer.prototype.postPassesUpdate = function (frameState) {
     freeResource(this);
 };
 
+/**
+ * scene.update() => S3MTilesLayer.update()
+ * @param {*} frameState
+ * @returns
+ */
 S3MTilesLayer.prototype.update = function(frameState) {
     if(!this.ready) {
         return ;

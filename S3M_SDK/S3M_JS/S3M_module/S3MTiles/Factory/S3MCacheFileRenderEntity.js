@@ -232,6 +232,14 @@ S3MCacheFileRenderEntity.prototype.createCommand = function() {
     this.ready = true;
 };
 
+/**
+ * 调用S3MTile.update()时，会自动调用该方法
+ * 1. 创建批处理表
+ * 2. 
+ * @param {*} frameState 
+ * @param {*} layer 
+ * @returns 
+ */
 S3MCacheFileRenderEntity.prototype.update = function(frameState, layer) {
     if(!this.ready) {
         this.createBatchTable(frameState);

@@ -10,8 +10,8 @@ function S3MTile(layer, parent, boundingVolume, fileName, rangeData, rangeMode) 
     this.fileExtension = Cesium.getExtensionFromUri(fileName);
     this.relativePath = getUrl(path, layer);
     this.fileName = fileName;
-    this.isLeafTile = rangeData === 0;
-    this.isRootTile = false;
+    this.isLeafTile = rangeData === 0;  // 是否为叶子节点切片
+    this.isRootTile = false;            // 是否为根节点切片
     this.boundingVolume = this.createBoundingVolume(boundingVolume, layer.modelMatrix);
     let baseResource = Cesium.Resource.createIfNeeded(layer._baseResource);
     if(Cesium.defined(parent)){
@@ -38,7 +38,7 @@ function S3MTile(layer, parent, boundingVolume, fileName, rangeData, rangeMode) 
     this.children = [];
     this.renderEntities = [];
     this.lodRangeData = Cesium.defaultValue(rangeData, 16);
-    this.lodRangeMode = Cesium.defaultValue(rangeMode, RangeMode.Pixel);
+    this.lodRangeMode = Cesium.defaultValue(rangeMode, RangeMode.Pixel);                // lod显示模式：
     this.contentState = this.isLeafTile ? ContentState.READY : ContentState.UNLOADED;
     this.touchedFrame = 0;
     this.requestedFrame = 0;
@@ -46,7 +46,7 @@ function S3MTile(layer, parent, boundingVolume, fileName, rangeData, rangeMode) 
     this.selectedFrame = 0;
     this.updatedVisibilityFrame = 0;
     this.foveatedFactor = 0;
-    this.priority = 0;
+    this.priority = 0;                   // 优先级
     this.priorityHolder = this;
     this.wasMinPriorityChild = false;
     this.shouldSelect = false;
@@ -172,6 +172,11 @@ S3MTile.prototype.getPixel = function(frameState) {
     return lamat * radius / distance;
 };
 
+/**
+ * 获取切片的几何容差
+ * @param {*} frameState 
+ * @returns 
+ */
 S3MTile.prototype.getGeometryError = function(frameState) {
     const camera = frameState.camera;
     const height = this.layer.context.drawingBufferHeight;
@@ -223,6 +228,11 @@ function priorityDeferred(tile, frameState) {
 }
 
 
+/**
+ * 更新切片可见性
+ * @param {*} frameState 
+ * @param {*} layer 
+ */
 S3MTile.prototype.updateVisibility = function(frameState, layer) {
     let parent = this.parent;
     let parentVisibilityPlaneMask = Cesium.defined(parent) ? parent.visibilityPlaneMask : Cesium.CullingVolume.MASK_INDETERMINATE;
@@ -248,6 +258,11 @@ function getContentFailedFunction(tile) {
     };
 }
 
+/**
+ * 解析子节点，创建子切片对象，并存放在父节点children属性、图层_cache属性中
+ * @param {*} parent 
+ * @param {*} datas 
+ */
 function createChildren(parent, datas) {
     let layer = parent.layer;
     let length = datas.length;
@@ -285,6 +300,13 @@ function createChildren(parent, datas) {
     }
 }
 
+/**
+ * 解析切片内容，并将切片状态设置为READY
+ * @param {*} layer 
+ * @param {*} tile 
+ * @param {*} arrayBuffer 
+ * @returns 
+ */
 function contentReadyFunction(layer, tile, arrayBuffer) {
     layer._cache.add(tile);
 
@@ -307,6 +329,10 @@ function contentReadyFunction(layer, tile, arrayBuffer) {
     tile.contentReadyPromise.resolve(content);
 }
 
+/**
+ * 请求切片内容
+ * @returns 
+ */
 S3MTile.prototype.requestContent = function() {
     let that = this;
     let layer = this.layer;
@@ -363,6 +389,11 @@ function isolateDigits(normalizedValue, numberOfDigits, leftShift) {
     return integer * Math.pow(10, leftShift);
 }
 
+/**
+ * 更新切片的优先级
+ * @param {*} layer 
+ * @param {*} frameState 
+ */
 S3MTile.prototype.updatePriority = function(layer, frameState) {
     let minimumPriority = layer._minimumPriority;
     let maximumPriority = layer._maximumPriority;
@@ -382,6 +413,7 @@ S3MTile.prototype.updatePriority = function(layer, frameState) {
     this.priority = foveatedDigits + pixelDigits + distanceDigit;
 };
 
+// 遍历渲染的实体(renderEntities)，并调用其update()方法，即S3MCacheFileRenderEntity.update()
 S3MTile.prototype.update = function(frameState, layer) {
     for(let i = 0,j = this.renderEntities.length;i < j;i++){
         this.renderEntities[i].update(frameState, layer);

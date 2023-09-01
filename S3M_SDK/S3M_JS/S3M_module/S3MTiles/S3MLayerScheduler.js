@@ -1,5 +1,7 @@
 ﻿import ContentState from './Enum/ContentState.js';
 import RangeMode from './Enum/RangeMode.js';
+
+// 调度器
 function S3MLayerScheduler (){
     this._stack = [];
 }
@@ -73,6 +75,13 @@ function updateChildren(layer, tile, stack, frameState) {
     return refines;
 }
 
+/**
+ * 选择切片：将未渲染的切片，放入图层选择队列中
+ * @param {*} layer 
+ * @param {*} tile 
+ * @param {*} frameState 
+ * @returns 
+ */
 function selectTile(layer, tile, frameState) {
     if(tile.selectedFrame === frameState.frameNumber || !tile.renderable){
         return ;
@@ -82,6 +91,13 @@ function selectTile(layer, tile, frameState) {
     tile.selectedFrame = frameState.frameNumber;
 }
 
+/**
+ * 加载切片：将未加载的切片存放在请求队列中（layer._requestTiles）
+ * @param {*} layer 
+ * @param {*} tile 
+ * @param {*} frameState 
+ * @returns 
+ */
 function loadTile(layer, tile, frameState) {
     if(tile.requestedFrame === frameState.frameNumber || tile.contentState !== ContentState.UNLOADED) {
         return ;
@@ -91,6 +107,13 @@ function loadTile(layer, tile, frameState) {
     tile.requestedFrame = frameState.frameNumber;
 }
 
+/**
+ * 处理切片：将READY状态或未渲染的切片存放在待处理队列中（layer._processTiles）
+ * @param {*} layer 
+ * @param {*} tile 
+ * @param {*} frameState 
+ * @returns 
+ */
 function processTile(layer, tile, frameState) {
     if(tile.processFrame === frameState.frameNumber || tile.contentState !== ContentState.READY || tile.renderable) {
         return ;
@@ -100,6 +123,13 @@ function processTile(layer, tile, frameState) {
     layer._processTiles.push(tile);
 }
 
+/**
+ * 缓存切片：
+ * @param {*} layer 
+ * @param {*} tile 
+ * @param {*} frameState 
+ * @returns 
+ */
 function touchTile(layer, tile, frameState) {
     if (tile.touchedFrame === frameState.frameNumber) {
         return;
@@ -109,6 +139,14 @@ function touchTile(layer, tile, frameState) {
     tile.touchedFrame = frameState.frameNumber;
 }
 
+/**
+ * step5:
+ * 更新瓦片的updatedVisibilityFrame属性
+ * @param {*} layer 
+ * @param {*} tile 
+ * @param {*} frameState 
+ * @returns 
+ */
 function updateVisibility(layer, tile, frameState) {
     if (tile.updatedVisibilityFrame === frameState.frameNumber) {
         return;
@@ -118,10 +156,22 @@ function updateVisibility(layer, tile, frameState) {
     tile.updateVisibility(frameState, layer);
 }
 
+/**
+ * step4:
+ * 
+ * @param {*} frameState 
+ * @param {*} layer 
+ * @param {*} tile 
+ */
 function updateTileVisibility(frameState, layer, tile) {
     updateVisibility(layer, tile, frameState);
 }
 
+/**
+ * step6:
+ * @param {*} layer 
+ * @param {*} tile 
+ */
 function updateMinimumMaximumPriority(layer, tile) {
     layer._maximumPriority.distance = Math.max(tile.distanceToCamera, layer._maximumPriority.distance);
     layer._minimumPriority.distance = Math.min(tile.distanceToCamera, layer._minimumPriority.distance);
@@ -133,6 +183,14 @@ function updateMinimumMaximumPriority(layer, tile) {
     layer._minimumPriority.pixel = Math.min(tile.pixel, layer._minimumPriority.pixel);
 }
 
+/**
+ * step3: 
+ * 1. 更新瓦片的一些属性（updatedVisibilityFrame、wasMinPriorityChild、priorityHolder、shouldSelect、selected）
+ * 2. 更新图层的_maximumPriority属性
+ * @param {*} frameState 
+ * @param {*} layer 
+ * @param {*} tile 
+ */
 function updateTile(frameState, layer, tile) {
     updateTileVisibility(frameState, layer, tile);
     tile.wasMinPriorityChild = false;
@@ -142,6 +200,15 @@ function updateTile(frameState, layer, tile) {
     tile.selected = false;
 }
 
+/**
+ * step8:
+ * 根据LOD切换模式，判断子节点是否可遍历
+ * tile.lodRangeMode：在S3ModelParser.parsePageLOD()初始化
+ * tile.geometryError：通过S3MTile.getGeometryError()方法获取
+ * @param {*} layer 
+ * @param {*} tile 
+ * @returns 
+ */
 function canTraverse(layer, tile) {
     if (tile.children.length === 0) {
         return false;
@@ -158,6 +225,13 @@ function canTraverse(layer, tile) {
     return tile.distanceToCamera * layer.lodRangeScale < tile.lodRangeData;
 }
 
+/**
+ * step7:
+ * 遍历瓦片：1. 2.将需要加载的切片，放入layer请求切片队列中
+ * @param {*} layer 
+ * @param {*} stack 
+ * @param {*} frameState 
+ */
 function traversal(layer, stack, frameState) {
     while(stack.length) {
         let tile = stack.pop();
@@ -182,6 +256,13 @@ function traversal(layer, stack, frameState) {
     }
 }
 
+/**
+ * step2:
+ * 遍历根节点瓦片：1.更新瓦片和图层的一些属性 ; 2.存储在_stack属性中
+ * @param {*} layer 
+ * @param {*} stack 
+ * @param {*} frameState 
+ */
 function selectRootTiles(layer, stack, frameState) {
     stack.length = 0;
     for(let i = 0,j = layer._rootTiles.length;i < j;i++){
@@ -195,6 +276,11 @@ function selectRootTiles(layer, stack, frameState) {
     }
 }
 
+/**
+ * 更新优先级
+ * @param {*} layer 
+ * @param {*} frameState 
+ */
 function updatePriority(layer, frameState) {
     let requestTiles = layer._requestTiles;
     let length = requestTiles.length;
@@ -203,6 +289,7 @@ function updatePriority(layer, frameState) {
     }
 }
 
+// step1: S3MTilesLayer.update() => S3MLayerScheduler.schedule()
 S3MLayerScheduler.prototype.schedule = function(layer, frameState) {
     let stack = this._stack;
     selectRootTiles(layer, stack, frameState);
