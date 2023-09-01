@@ -1,70 +1,70 @@
 export default `
-    attribute vec4 aPosition;
+    in vec4 aPosition;
 #ifdef VertexColor
-    attribute vec4 aColor;
+    in vec4 aColor;
 #endif
 #ifdef VertexNormal
-    attribute vec3 aNormal;
+    in vec3 aNormal;
 #endif
 #ifdef Instance
-    attribute float instanceId;
+    in float instanceId;
 #else
-    attribute float batchId;
+    in float batchId;
 #endif 
 
 #ifdef USE_VertexWeight
-    attribute float aVertexWeight;
+    in float aVertexWeight;
 #endif
 
 #ifdef USE_TextureCoordMatrix
-    attribute vec2 aTextureCoordMatrix;
+    in vec2 aTextureCoordMatrix;
 #endif
 
 #ifdef TexCoord
-    attribute vec4 aTexCoord0;
-    varying vec4 vTexCoord;
+    in vec4 aTexCoord0;
+    out vec4 vTexCoord;
     uniform mat4 uTexMatrix;
 #ifdef COMPUTE_TEXCOORD
     uniform float uTexture0Width;
-    varying vec4 vTexMatrix;
-    varying vec4 vTexCoordTransform;
-    varying vec2 vIsRGBA;
+    out vec4 vTexMatrix;
+    out vec4 vTexCoordTransform;
+    out vec2 vIsRGBA;
 #endif
 #endif
 
 #ifdef TexCoord2
-    attribute vec4 aTexCoord1;
+    in vec4 aTexCoord1;
     uniform float uTexture1Width;
-    varying vec4 vTexMatrix2;
+    out vec4 vTexMatrix2;
 #endif
 #ifdef InstanceBim
-    attribute vec4 uv2;
-    attribute vec4 uv3;
-    attribute vec4 uv4;
-    attribute vec4 secondary_colour;
-    attribute vec4 uv6;   
+    in vec4 uv2;
+    in vec4 uv3;
+    in vec4 uv4;
+    in vec4 secondary_colour;
+    in vec4 uv6;   
 #endif
 
 #ifdef InstancePipe
-    attribute vec4 uv1;
-    attribute vec4 uv2;
-    attribute vec4 uv3;
-    attribute vec4 uv4;
-    attribute vec4 uv5;
-    attribute vec4 uv6;
-    attribute vec4 uv7;
-    attribute vec4 secondary_colour;
-    attribute vec4 uv9;
+    in vec4 uv1;
+    in vec4 uv2;
+    in vec4 uv3;
+    in vec4 uv4;
+    in vec4 uv5;
+    in vec4 uv6;
+    in vec4 uv7;
+    in vec4 secondary_colour;
+    in vec4 uv9;
 #endif
     uniform vec4 uFillForeColor;
     uniform vec4 uSelectedColor;
-    varying vec4 vSecondColor;
-    varying vec4 vPositionMC;
-    varying vec3 vPositionEC;
+    out vec4 vSecondColor;
+    out vec4 vPositionMC;
+    out vec3 vPositionEC;
 #ifdef VertexNormal
-    varying vec3 vNormalEC;
+    out vec3 vNormalEC;
 #endif
-    varying vec4 vColor;
+    out vec4 vColor;
     
     const float SHIFT_LEFT8 = 256.0;
     const float SHIFT_RIGHT8 = 1.0 / 256.0;

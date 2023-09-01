@@ -1,16 +1,16 @@
 export default `
-    attribute vec4 aPosition;
-    attribute vec4 aColor;
+    in vec4 aPosition;
+    in vec4 aColor;
 #ifdef TexCoord
-    attribute vec4 aTexCoord0;
+    in vec4 aTexCoord0;
     uniform float uTexture0Width;
-    varying vec4 vTexCoord;
-    varying vec4 vTexMatrix;
-    varying vec4 vTexCoordTransform;
+    out vec4 vTexCoord;
+    out vec4 vTexMatrix;
+    out vec4 vTexCoordTransform;
 #endif
     
 #ifdef VertexColor
-    varying vec4 vColor;
+    out vec4 vColor;
 #endif
     
     const float SHIFT_LEFT8 = 256.0;

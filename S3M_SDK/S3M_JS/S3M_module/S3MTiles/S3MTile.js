@@ -357,7 +357,8 @@ S3MTile.prototype.requestContent = function() {
     }
 
     this.contentState = ContentState.LOADING;
-    this.contentReadyPromise = Cesium.when.defer();
+    // this.contentReadyPromise = Cesium.when.defer();
+    this.contentReadyPromise = Cesium.defer();
     let contentFailedFunction = getContentFailedFunction(this);
 
     promise.then(function(arrayBuffer) {
@@ -367,7 +368,7 @@ S3MTile.prototype.requestContent = function() {
         }
 
         contentReadyFunction(layer, that, arrayBuffer);
-    }).otherwise(function(error) {
+    }).catch(function(error) {
         if (request.state === Cesium.RequestState.CANCELLED) {
             that.contentState = ContentState.UNLOADED;
             return;

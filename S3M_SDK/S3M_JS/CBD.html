@@ -5,8 +5,13 @@
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no">
   <title>CBD</title>
-  <link href="../Build/Cesium/Widgets/widgets.css" rel="stylesheet">
-  <script src="../Build/Cesium/Cesium.js"></script>
+  <!-- <link href="../Build/Cesium/Widgets/widgets.css" rel="stylesheet">
+  <script src="../Build/Cesium/Cesium.js"></script> -->
+  <script src="https://cesium.com/downloads/cesiumjs/releases/1.106/Build/Cesium/Cesium.js"></script>
+  <link
+    href="https://cesium.com/downloads/cesiumjs/releases/1.106/Build/Cesium/Widgets/widgets.css"
+    rel="stylesheet"
+  />
   <style>
     html, body, #cesiumContainer {
       width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden;
@@ -21,24 +26,37 @@
     let viewer = new Cesium.Viewer('cesiumContainer',{
     });
     let scene = viewer.scene;
+    // let layer = new S3MTilesLayer({
+    //     context : scene._context,
+    //     url: './data/CBD/cbd.scp'
+    // });
     let layer = new S3MTilesLayer({
         context : scene._context,
-        url: './data/CBD/cbd.scp'
+        //url:'http://www.supermapol.com/realspace/services/3D-CBD-2/rest/realspace/datas/Building@CBD/config'
+        url: 'http://www.supermapol.com/realspace/services/3D-CBDCache20200416-2/rest/realspace/datas/Building@CBD/config'
     });
 
     scene.primitives.add(layer);
 
-    layer.readyPromise.then(function() {
-        scene.camera.setView({
+    scene.camera.setView({
             destination : new Cesium.Cartesian3(-2181968.890329965, 4385313.17843029, 4072712.8241634783),
             orientation : {
                 heading : 3.1756648661534443,
                 pitch : -0.3715184468182904
             }
         });
-    }).otherwise(function(error) {
-        console.log(error);
-    });
+
+    // layer.readyPromise.then(function() {
+    //     scene.camera.setView({
+    //         destination : new Cesium.Cartesian3(-2181968.890329965, 4385313.17843029, 4072712.8241634783),
+    //         orientation : {
+    //             heading : 3.1756648661534443,
+    //             pitch : -0.3715184468182904
+    //         }
+    //     });
+    // }).otherwise(function(error) {
+    //     console.log(error);
+    // });
 </script>
 </body>
 </html>

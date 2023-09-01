@@ -7,30 +7,30 @@ export default `
 #endif
     uniform vec4 uDiffuseColor;
 #ifdef TexCoord
-    varying vec4 vTexCoord;
+    in vec4 vTexCoord;
 #ifdef COMPUTE_TEXCOORD
     uniform sampler2D uTexture;
     uniform float uTexture0Width;
-    varying vec4 vTexCoordTransform;
-    varying vec4 vTexMatrix;
-    varying vec2 vIsRGBA;
+    in vec4 vTexCoordTransform;
+    in vec4 vTexMatrix;
+    in vec2 vIsRGBA;
 #endif
 #endif
 
-    varying vec4 vColor;
-    varying vec4 vSecondColor;
-    varying vec4 vPositionMC;
-    varying vec3 vPositionEC;
+    in vec4 vColor;
+    in vec4 vSecondColor;
+    in vec4 vPositionMC;
+    in vec3 vPositionEC;
 #ifdef VertexNormal
-    varying vec3 vNormalEC;
+    in vec3 vNormalEC;
 #endif
 #ifdef TexCoord2
     uniform sampler2D uTexture2;
     uniform float uTexture1Width;
-    varying vec4 vTexMatrix2;
+    in vec4 vTexMatrix2;
 #endif
 #ifdef COMPUTE_TEXCOORD
-    void calculateMipLevel(in vec2 inTexCoord, in float vecTile, in float fMaxMip, inout float mipLevel)
+    float calculateMipLevel(in vec2 inTexCoord, in float vecTile, in float fMaxMip, inout float mipLevel)
     {
         vec2 dx = dFdx(inTexCoord * vecTile);
         vec2 dy = dFdy(inTexCoord * vecTile);
@@ -43,6 +43,17 @@ export default `
         float d = dMax * (1.0 - offset) + dMin * offset;
         mipLevel = 0.5 * log2(d);
         mipLevel = clamp(mipLevel, 0.0, fMaxMip - 1.62);
+        // >> modify.start(2023-04-19) 蔡周峻 参考opengl4.6编程规范，计算mipmap层级，并和s3m自己的计算方式对比，得出lod等级偏差值
+        float n = min(dMax / dMin,1.0);
+        float autolevel = 0.5 * log2(dMax) - log2(n);
+        float lodBias =  mipLevel - autolevel - 2.50;
+        lodBias = lodBias * 0.6;
+        if(mipLevel < 3.5)
+        {
+            lodBias = -1.0 * fMaxMip;
+        }
+        return lodBias;
+        // >> modify.end
     }
     
     void calculateTexCoord(in vec3 inTexCoord, in float scale, in float XTran, in float YTran, in float fTile, in float mipLevel, inout vec2 outTexCoord)
@@ -65,9 +76,7 @@ export default `
     {
         vec4 color = vec4(1.0);
         float mipLevel = 0.0;
-    #ifdef GL_OES_standard_derivatives
-        calculateMipLevel(oriTexCoord.xy, texTileWidth, fMaxMipLev, mipLevel);
-    #endif
+        float lodBias = calculateMipLevel(oriTexCoord.xy, texTileWidth, fMaxMipLev, mipLevel);
         vec2 realTexCoord;
         calculateTexCoord(oriTexCoord, fTexCoordScale, vecTexCoordTranslate.x, vecTexCoordTranslate.y, texTileWidth, mipLevel, realTexCoord);
         if(isRGBA > 0.5)
@@ -75,28 +84,30 @@ export default `
             vec2 rgbTexCoord;
             rgbTexCoord.x = (realTexCoord.x + vecTexCoordTranslate.x * fTexCoordScale) * 0.5;
             rgbTexCoord.y = (realTexCoord.y + vecTexCoordTranslate.y * fTexCoordScale) * 0.5;
-            color = texture2D(curTexture, rgbTexCoord.xy, -10.0);
+            color = texture(curTexture, rgbTexCoord.xy, -10.0);
             vec2 vecAlphaTexCoord;
             vecAlphaTexCoord.x = rgbTexCoord.x;
             vecAlphaTexCoord.y = rgbTexCoord.y + fTexCoordScale * 0.5;
-            color.a = texture2D(curTexture, vecAlphaTexCoord.xy, -10.0).r;
+            color.a = texture(curTexture, vecAlphaTexCoord.xy, -10.0).r;
         }
         else
         {
             if(oriTexCoord.z < -9000.0)
             {
-                color = texture2D(curTexture, realTexCoord.xy);
+                color = texture(curTexture, realTexCoord.xy);
             }
             else
             {
+                // >> modify.start(2023-04-18) 蔡周峻 修复webgl2中纹理缝隙问题，基本都采样顶层
                 #ifdef GL_EXT_shader_texture_lod
-                    color = texture2DLodEXT(curTexture, realTexCoord.xy, mipLevel);
+                    color = textureLodEXT(curTexture, realTexCoord.xy, mipLevel);
                 #else
-                    color = texture2D(curTexture, realTexCoord.xy, mipLevel);
+                    color = texture(curTexture, realTexCoord.xy, lodBias);
                 #endif
+                //>> modify.end
             }
         }
-        
+       
         return color;
     }
     
@@ -184,6 +195,6 @@ export default `
     #ifdef TexCoord
         color = LINEARtoSRGB(color);
     #endif
-        gl_FragColor = vec4(color, baseColorWithAlpha.a);
+        out_FragColor = vec4(color, baseColorWithAlpha.a);
     }
 `;

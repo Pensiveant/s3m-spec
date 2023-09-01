@@ -9,13 +9,13 @@ export default `
 #ifdef TexCoord
     uniform sampler2D uTexture;
     uniform float uTexture0Width;
-    varying vec4 vTexCoord;
-    varying vec4 vTexCoordTransform;
-    varying vec4 vTexMatrix;
+    in vec4 vTexCoord;
+    in vec4 vTexCoordTransform;
+    in vec4 vTexMatrix;
 #endif
 
 #ifdef VertexColor
-    varying vec4 vColor;
+    in vec4 vColor;
 #endif
 
 #ifdef TexCoord
@@ -61,14 +61,14 @@ export default `
         calculateTexCoord(oriTexCoord, fTexCoordScale, vecTexCoordTranslate.x, vecTexCoordTranslate.y, texTileWidth, mipLevel, realTexCoord);
         if(oriTexCoord.z < -9000.0)
         {
-            color = texture2D(curTexture, realTexCoord.xy);
+            color = texture(curTexture, realTexCoord.xy);
         }
         else
         {
             #ifdef GL_EXT_shader_texture_lod
-                color = texture2DLodEXT(curTexture, realTexCoord.xy, mipLevel);
+                color = textureLodEXT(curTexture, realTexCoord.xy, mipLevel);
             #else
-                color = texture2D(curTexture, realTexCoord.xy, mipLevel);
+                color = texture(curTexture, realTexCoord.xy, mipLevel);
             #endif
         }
         return color;
@@ -98,6 +98,6 @@ export default `
         baseColorWithAlpha *= getTextureColor();
     #endif  
       
-        gl_FragColor = baseColorWithAlpha;
+        out_FragColor = baseColorWithAlpha;
     }
 `;
