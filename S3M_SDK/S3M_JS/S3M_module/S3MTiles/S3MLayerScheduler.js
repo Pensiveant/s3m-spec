@@ -202,8 +202,13 @@ function updateTile(frameState, layer, tile) {
 
 /**
  * step8:
- * 根据LOD切换模式，判断子节点是否可遍历
- * tile.lodRangeMode：在S3ModelParser.parsePageLOD()初始化
+ * 根据LOD切换模式（RangeMode），判断子节点是否需要遍历
+ * LOD切换模式由tile.lodRangeMode确定，在S3ModelParser.parsePageLOD()初始化
+ * 
+ * RangeMode.Distance(0)：当前切片到相机的距离*比例系数（layer.lodRangeScale）<设置值（tile.lodRangeData），才遍历子节点
+ * RangeMode.Pixel(1)：当前切片的像素/*比例系数（layer.lodRangeScale）> 设置值（tile.lodRangeData），才遍历子节点
+ * RangeMode.GeometryError(2)：几何容差模式，当前切片几何容差 > 16，才遍历子节点
+ * 
  * tile.geometryError：通过S3MTile.getGeometryError()方法获取
  * @param {*} layer 
  * @param {*} tile 

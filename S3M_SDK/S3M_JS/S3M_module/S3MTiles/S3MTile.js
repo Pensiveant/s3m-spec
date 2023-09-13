@@ -12,7 +12,7 @@ function S3MTile(layer, parent, boundingVolume, fileName, rangeData, rangeMode) 
     this.fileName = fileName;
     this.isLeafTile = rangeData === 0;  // 是否为叶子节点切片
     this.isRootTile = false;            // 是否为根节点切片
-    this.boundingVolume = this.createBoundingVolume(boundingVolume, layer.modelMatrix);
+    this.boundingVolume = this.createBoundingVolume(boundingVolume, layer.modelMatrix); // 初始化包围盒
     let baseResource = Cesium.Resource.createIfNeeded(layer._baseResource);
     if(Cesium.defined(parent)){
         this.baseUri = parent.baseUri;
@@ -99,7 +99,14 @@ function getUrl(fileName, layer){
     return lastUrl +'/rest/realspace'+afterRealspace+'data/path/'+ fileName.replace(/^\.*/, "").replace(/^\//, "").replace(/\/$/, "");
 }
 
+
 const scratchMatrix = new Cesium.Matrix3();
+/**
+ * 创建长方体包围盒
+ * @param {*} box 
+ * @param {*} transform 
+ * @returns 
+ */
 function createBoundingBox(box, transform) {
     if(Cesium.defined(box.center)){
         let center = new Cesium.Cartesian3(box.center.x, box.center.y, box.center.z);
@@ -132,6 +139,12 @@ function createBoundingBox(box, transform) {
     return new Cesium.TileBoundingSphere(center, radius);
 }
 
+/**
+ * 创建球体或长方体包围盒
+ * @param {*} parameter 
+ * @param {*} transform 
+ * @returns 
+ */
 S3MTile.prototype.createBoundingVolume = function(parameter, transform) {
     if (Cesium.defined(parameter.sphere)) {
         return createSphere(parameter.sphere, transform);
@@ -173,7 +186,7 @@ S3MTile.prototype.getPixel = function(frameState) {
 };
 
 /**
- * 获取切片的几何容差
+ * 计算切片的几何误差
  * @param {*} frameState 
  * @returns 
  */

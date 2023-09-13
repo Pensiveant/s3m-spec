@@ -135,7 +135,8 @@ function parsePageLOD(buffer, view, bytesOffset, pageLods, version) {
     let pageLOD = {};
     pageLOD.rangeList = view.getFloat32(bytesOffset, true);
     bytesOffset += Float32Array.BYTES_PER_ELEMENT;
-    pageLOD.rangeMode = view.getUint16(bytesOffset, true);
+    pageLOD.rangeMode = view.getUint16(bytesOffset, true); // LOD切换模式
+    // pageLOD.rangeMode = 2; // LOD切换模式
     bytesOffset += Uint16Array.BYTES_PER_ELEMENT;
     let center = {};
     center.x = view.getFloat64(bytesOffset, true);

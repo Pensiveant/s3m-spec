@@ -46,6 +46,7 @@
         context: scene._context,
         //url:'http://www.supermapol.com/realspace/services/3D-CBD-2/rest/realspace/datas/Building@CBD/config'
         url: "http://www.supermapol.com/realspace/services/3D-CBDCache20200416-2/rest/realspace/datas/Building@CBD/config",
+        // url:"http://172.18.4.173:8090/iserver/services/3D-oss3DCache-JXJZDTH/rest/realspace/datas/New_Model_1%40test/config"
       });
 
       scene.primitives.add(layer);
@@ -61,6 +62,25 @@
           pitch: -0.3715184468182904,
         },
       });
+
+
+      // scene.camera.setView({
+      //   destination: new Cesium.Cartesian3(
+      //     -2181968.890329965,
+      //     4385313.17843029,
+      //     4072712.8241634783
+      //   ),
+      //   destination: Cesium.Rectangle.fromDegrees(
+      //     123.45319716438244,
+      //     41.74143674697513,
+      //     123.46468349444334,
+      //     41.74813881518993
+      //   ),
+      //   // orientation: {
+      //   //   heading: 3.1756648661534443,
+      //   //   pitch: -0.3715184468182904,
+      //   // },
+      // });
 
       // layer.readyPromise.then(function() {
       //     scene.camera.setView({
