@@ -2,75 +2,76 @@ import DDSTexture from './DDSTexture.js';
 import MaterialPass from './MaterialPass.js';
 import S3MContentFactory from './Factory/S3MContentFactory.js';
 import VertexCompressOption from './Enum/VertexCompressOption.js';
+import CRNTranscoder from "./Core/CRNTranscoder.js";
+import S3MPixelFormat from './Enum/S3MPixelFormat.js';
 
 function S3MContentParser(){
 
 }
 
-function parseMaterial(context, content, tile) {
+async function parseMaterial(context, content, tile) {
     let materialTable = {};
-    let materials = content.materials.material;
+    let readyPromises = [];
+    let materials = Cesium.defaultValue(content.materials.material, content.materials.materials);
     for(let i = 0,j = materials.length;i < j;i++){
         let material = materials[i].material;
-        let materialCode = material.id;
+        let materialCode = Cesium.defaultValue(material.id, material.name);
         let materialPass = new MaterialPass();
         materialTable[materialCode] = materialPass;
-        let ambient = material.ambient;
+        let ambient = Cesium.defaultValue(material.ambient, Cesium.Color.WHITE);
         materialPass.ambientColor = new Cesium.Color(ambient.r, ambient.g, ambient.b, ambient.a);
-        let diffuse = material.diffuse;
+        let diffuse = Cesium.defaultValue(material.diffuse, Cesium.Color.WHITE);
         materialPass.diffuseColor = new Cesium.Color(diffuse.r, diffuse.g, diffuse.b, diffuse.a);
-        let specular = material.specular;
+        let specular = Cesium.defaultValue(material.specular, Cesium.Color.WHITE);
         materialPass.specularColor = new Cesium.Color(specular.r, specular.g, specular.b, specular.a);
         materialPass.shininess = material.shininess;
         materialPass.bTransparentSorting = material.transparentsorting;
-        let textureStates = material.textureunitstates;
+        materialPass.alphaMode = material.alphaMode;
+        let textureStates = Cesium.defaultValue(material.textureunitstates, material.textureStates);
         let len = textureStates.length;
         for(let k = 0;k < len;k++){
-            let textureState = textureStates[k].textureunitstate;
-            let textureCode = textureState.id;
-            let wrapS = textureState.addressmode.u === 0 ? Cesium.TextureWrap.REPEAT : Cesium.TextureWrap.CLAMP_TO_EDGE;
-            let wrapT = textureState.addressmode.v === 0 ? Cesium.TextureWrap.REPEAT : Cesium.TextureWrap.CLAMP_TO_EDGE;
-            materialPass.texMatrix = Cesium.Matrix4.unpack(textureState.texmodmatrix);
+            let textureState = Cesium.defaultValue(textureStates[k].textureunitstate, textureStates[k].textureUnitState)
+            let textureCode = Cesium.defaultValue(textureState.id, textureState.textureName);
+            let uAddressMode = Cesium.defaultValue(textureState.addressmode, textureState.uAddressMode);
+            let wrapS = uAddressMode.u === 0 ? Cesium.TextureWrap.REPEAT : Cesium.TextureWrap.CLAMP_TO_EDGE;
+            let wrapT = uAddressMode.v === 0 ? Cesium.TextureWrap.REPEAT : Cesium.TextureWrap.CLAMP_TO_EDGE;
+            materialPass.texMatrix = Cesium.Matrix4.unpack(Cesium.defaultValue(textureState.texmodmatrix,textureState.matrix)); 
             let textureInfo = content.texturePackage[textureCode];
             if(Cesium.defined(textureInfo) && textureInfo.arrayBufferView.byteLength > 0) {
                 textureInfo.wrapS = wrapS;
                 textureInfo.wrapT = wrapT;
                 let keyword = tile.fileName + textureCode;
                 let texture = context.textureCache.getTexture(keyword);
+                materialPass._RGBTOBGR = textureInfo.nFormat === S3MPixelFormat.ABGR;
                 if(!Cesium.defined(texture)){
-                    if(Cesium.PixelFormat.isCompressedFormat(textureInfo.internalFormat)){
-                        texture = new DDSTexture(context, textureCode, textureInfo);
+                    textureInfo.isTexBlock = false;
+                    switch (textureInfo.compressType) {
+                        case S3MPixelFormat.CRN_DXT5: 
+                            const compressedBuffer = CRNTranscoder.transcode({
+                                data: textureInfo.arrayBufferView,
+                                bMipMap : true
+                            });
+                            textureInfo.arrayBufferView = compressedBuffer.bufferView;
+                            texture = new DDSTexture(context, textureCode, textureInfo);
+                            context.textureCache.addTexture(keyword, texture);
+                            break;
+                        case S3MPixelFormat.WEBP:
+                            readyPromises.push(materialPass.createWebp(keyword, context, textureInfo));
+                            break;
+                        default: 
+                            texture = new DDSTexture(context, textureCode, textureInfo);
+                            context.textureCache.addTexture(keyword, texture);
+                            break;
                     }
-                    else{
-                        let isPowerOfTwo = Cesium.Math.isPowerOfTwo(textureInfo.width) && Cesium.Math.isPowerOfTwo(textureInfo.height);
-                        texture = new Cesium.Texture({
-                            context : context,
-                            source : {
-                                width : textureInfo.width,
-                                height : textureInfo.height,
-                                arrayBufferView : textureInfo.arrayBufferView
-                            },
-                            sampler : new Cesium.Sampler({
-                                minificationFilter : isPowerOfTwo ? context._gl.LINEAR_MIPMAP_LINEAR : context._gl.LINEAR,
-                                wrapS : wrapS,
-                                wrapT : wrapT
-                            })
-                        });
-
-                        if(isPowerOfTwo){
-                            texture.generateMipmap(Cesium.MipmapHint.NICEST);
-                        }
-                    }
-
-                    context.textureCache.addTexture(keyword, texture);
                 }
-
-                materialPass.textures.push(texture);
+                texture && materialPass.textures.push(texture);
             }
         }
     }
 
-    return materialTable;
+    return Promise.all(readyPromises).then(()=>{
+        return materialTable
+    })
 }
 
 function calcBoundingVolumeForNormal(vertexPackage, modelMatrix){
@@ -105,6 +106,7 @@ function calcBoundingVolumeForNormal(vertexPackage, modelMatrix){
     Cesium.BoundingSphere.transform(boundingSphere, modelMatrix, boundingSphere);
     vertexArray.length = 0;
     return boundingSphere;
+    
 }
 
 let scratchCenter = new Cesium.Cartesian3();
@@ -131,39 +133,60 @@ function calcBoundingVolume(vertexPackage, modelMatrix) {
     return calcBoundingVolumeForNormal(vertexPackage, modelMatrix);
 }
 
-const scratchMatrix = new Cesium.Matrix3();
+function createBoundingBox(box, transform) {
+    if(box.center){
+        const halfAxes = new Cesium.Matrix3();
+        const center = new Cesium.Cartesian3(box.center.x, box.center.y, box.center.z);
+        Cesium.Matrix4.multiplyByPoint(transform, center, center);
+
+        const vx = new Cesium.Cartesian4(box.xExtent.x, box.xExtent.y, box.xExtent.z, 0);
+        const vy = new Cesium.Cartesian4(box.yExtent.x, box.yExtent.y, box.yExtent.z, 0);
+        const vz = new Cesium.Cartesian4(box.zExtent.x, box.zExtent.y, box.zExtent.z, 0);
+
+        Cesium.Matrix4.multiplyByVector(transform, vx, vx);
+        Cesium.Matrix4.multiplyByVector(transform, vy, vy);
+        Cesium.Matrix4.multiplyByVector(transform, vz, vz);
+
+        Cesium.Matrix3.setColumn(halfAxes, 0, vx, halfAxes);
+        Cesium.Matrix3.setColumn(halfAxes, 1, vy, halfAxes);
+        Cesium.Matrix3.setColumn(halfAxes, 2, vz, halfAxes);
+        return new Cesium.TileOrientedBoundingBox(center, halfAxes);
+    }
+
+    const points = [];
+    points.push(new Cesium.Cartesian3(box.min.x, box.min.y, box.min.z));
+    points.push(new Cesium.Cartesian3(box.min.x, box.min.y, box.max.z));
+    points.push(new Cesium.Cartesian3(box.min.x, box.max.y, box.min.z));
+    points.push(new Cesium.Cartesian3(box.min.x, box.max.y, box.max.z));
+    points.push(new Cesium.Cartesian3(box.max.x, box.min.y, box.min.z));
+    points.push(new Cesium.Cartesian3(box.max.x, box.min.y, box.max.z));
+    points.push(new Cesium.Cartesian3(box.max.x, box.max.y, box.min.z));
+    points.push(new Cesium.Cartesian3(box.max.x, box.max.y, box.max.z));
+
+    for(let i = 0; i < 8; i++){
+        points[i] = Cesium.Matrix4.multiplyByPoint(transform, points[i], points[i]);
+    }
+
+    const orientedBoundingBox = Cesium.OrientedBoundingBox.fromPoints(points);
+    return new Cesium.TileOrientedBoundingBox(orientedBoundingBox.center, orientedBoundingBox.halfAxes);
+}
+
 function parseGeodes(layer, content, materialTable, pagelodNode, pagelod) {
-    let geoMap = {};
     let geodeList = pagelodNode.geodes;
     for(let i = 0,j = geodeList.length;i < j;i++){
         let geodeNode = geodeList[i];
         let geoMatrix = geodeNode.matrix;
         let modelMatrix = Cesium.Matrix4.multiply(layer.modelMatrix, geoMatrix, new Cesium.Matrix4());
-        let boundingVolume;
+        let boundingSphere;
         if(Cesium.defined(pagelod.boundingVolume)) {
-            if(pagelod.boundingVolume.sphere){
-                boundingVolume = new Cesium.BoundingSphere(pagelod.boundingVolume.sphere.center, pagelod.boundingVolume.sphere.radius);
-                Cesium.BoundingSphere.transform(boundingVolume, layer.modelMatrix, boundingVolume);
-            }
-            else if(pagelod.boundingVolume.box){
-                const box = pagelod.boundingVolume.box;
-                let center = new Cesium.Cartesian3(box.center.x, box.center.y, box.center.z);
-                let vx = new Cesium.Cartesian4(box.xExtent.x, box.xExtent.y, box.xExtent.z, 0);
-                let vy = new Cesium.Cartesian4(box.yExtent.x, box.yExtent.y, box.yExtent.z, 0);
-                let vz = new Cesium.Cartesian4(box.zExtent.x, box.zExtent.y, box.zExtent.z, 0);
-
-                let halfAxes = new Cesium.Matrix3();
-                Cesium.Matrix3.setColumn(halfAxes, 0, vx, halfAxes);
-                Cesium.Matrix3.setColumn(halfAxes, 1, vy, halfAxes);
-                Cesium.Matrix3.setColumn(halfAxes, 2, vz, halfAxes);
-
-                center = Cesium.Matrix4.multiplyByPoint(layer.modelMatrix, center, center);
-                const rotationScale = Cesium.Matrix4.getMatrix3(layer.modelMatrix, scratchMatrix);
-                halfAxes = Cesium.Matrix3.multiply(rotationScale, halfAxes, halfAxes);
-                boundingVolume = new Cesium.OrientedBoundingBox(center, halfAxes);
+            if(Cesium.defined(pagelod.boundingVolume.obb)){
+                boundingSphere = createBoundingBox(pagelod.boundingVolume.obb, layer.modelMatrix)._boundingSphere;
+            }else{
+                boundingSphere = new Cesium.BoundingSphere(pagelod.boundingVolume.sphere.center, pagelod.boundingVolume.sphere.radius);
+                Cesium.BoundingSphere.transform(boundingSphere, layer.modelMatrix, boundingSphere);
             }
         }
-
+        
         let skeletonNames = geodeNode.skeletonNames;
         for(let m = 0,n = skeletonNames.length;m < n; m++){
             let geoName = skeletonNames[m];
@@ -175,10 +198,8 @@ function parseGeodes(layer, content, materialTable, pagelodNode, pagelod) {
             if(arrIndexPackage.length > 0) {
                 material = materialTable[arrIndexPackage[0].materialCode];
             }
-
-            let geodeBoundingVolume = calcBoundingVolume(vertexPackage, modelMatrix);
-
-            geoMap[geoName] = S3MContentFactory[layer.fileType]({
+            let geodeBoundingVolume = Cesium.defined(boundingSphere) ? boundingSphere : calcBoundingVolume(vertexPackage, modelMatrix);
+            const renderEntity = S3MContentFactory[layer.fileType]({
                 layer : layer,
                 vertexPackage : vertexPackage,
                 arrIndexPackage : arrIndexPackage,
@@ -190,27 +211,21 @@ function parseGeodes(layer, content, materialTable, pagelodNode, pagelod) {
                 edgeGeometry : geoPackage.edgeGeometry,
                 geoName : geoName
             });
+            pagelod.renderEntities.push(renderEntity);
         }
     }
 
-    if(Object.keys(geoMap).length < 1){
-        return ;
-    }
-
-    if(!Cesium.defined(pagelod.boundingVolume)) {
+    if(!Cesium.defined(pagelod.boundingVolume) && (pagelod.renderEntities.length > 0)) {
         let arr = [];
-        for(let key in geoMap) {
-            if(geoMap.hasOwnProperty(key)) {
-                arr.push(geoMap[key].boundingVolume);
-            }
+        for(let i = 0,j = pagelod.renderEntities.length;i < j;i++){
+            arr.push(pagelod.renderEntities[i].boundingVolume);
         }
 
         pagelod.boundingVolume = {
-            sphere : Cesium.BoundingSphere.fromBoundingSpheres(arr)
+            sphere : Cesium.BoundingSphere.fromBoundingSpheres(arr),
+            isCalc : true//3.0以下版本的叶子节点的包围球须重新计算
         };
     }
-
-    pagelod.geoMap = geoMap;
 }
 
 function parsePagelods(layer, content, materialTable) {
@@ -220,51 +235,42 @@ function parsePagelods(layer, content, materialTable) {
         let pagelod = {};
         let pagelodNode = groupNode.pageLods[i];
         pagelod.rangeMode = pagelodNode.rangeMode;
-        pagelod.rangeDataList = pagelodNode.childTile;
+        pagelod.childTile = pagelodNode.childTile;
         pagelod.rangeList = pagelodNode.rangeList;
-        if(pagelodNode.obb){
-            pagelod.boundingVolume = {
-                box : {
-                    center : pagelodNode.obb.obbCenter,
-                    xExtent : pagelodNode.obb.xExtent,
-                    yExtent : pagelodNode.obb.yExtent,
-                    zExtent : pagelodNode.obb.zExtent
-                }
-            };
-        }
-        else{
+        pagelod.isLeafTile = pagelod.childTile === '';
+        pagelod.renderEntities = [];
+        if(pagelodNode.boundingSphere && (!pagelod.isLeafTile || layer.dataVersion > 2)){
             let center = pagelodNode.boundingSphere.center;
             let radius = pagelodNode.boundingSphere.radius;
-            if(pagelod.rangeDataList !== ''){
-                pagelod.boundingVolume = {
-                    sphere : {
-                        center : new Cesium.Cartesian3(center.x, center.y, center.z),
-                        radius : radius
-                    }
-                };
-            }
-            else{
-                pagelod.isLeafTile = true;
-            }
+            pagelod.boundingVolume = {
+                sphere : {
+                    center : new Cesium.Cartesian3(center.x, center.y, center.z),
+                    radius : radius
+                },
+                isCalc : false //包围球是否是重新计算的
+            };
         }
 
+        if(pagelodNode.obb){
+            pagelod.boundingVolume = pagelod.boundingVolume || {};
+            pagelod.boundingVolume.obb = pagelodNode.obb;
+        }
 
         parseGeodes(layer, content, materialTable, pagelodNode, pagelod);
-        if(Cesium.defined(pagelod.geoMap)){
-            pagelods.push(pagelod);
-        }
+        pagelods.push(pagelod);
     }
 
     return pagelods;
 }
 
-S3MContentParser.parse = function(layer, content, tile) {
+S3MContentParser.parse = async function(layer, content, tile) { 
     if(!Cesium.defined(content)) {
         return ;
     }
 
-    let materialTable = parseMaterial(layer.context, content, tile);
-    let pagelods = parsePagelods(layer, content, materialTable);
+    layer.dataVersion = content.version;
+    let materialTable = await parseMaterial(layer.context, content, tile);
+    let pagelods =  parsePagelods(layer, content, materialTable);
 
     return pagelods;
 };

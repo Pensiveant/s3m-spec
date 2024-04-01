@@ -2,6 +2,7 @@ import ProgramDefines from './Enum/ProgramDefines.js';
 import VertexCompressOption from './Enum/VertexCompressOption.js';
 import InstanceMode from './Enum/InstanceMode.js';
 
+const defined = Cesium.defined;
 function S3MCreateShaderProgramJob(){
     this.model = undefined;
     this.context = undefined;
@@ -24,15 +25,44 @@ function getExtension(gl, names) {
     return undefined;
 }
 
+function isNeedAdjustColor(layer){
+    return (layer._brightness !== 1.0 || layer._contrast !== 1.0 || layer._hue !== 0.0 || layer._saturation !== 1.0 || layer._gamma !== 1.0);
+}
+
 S3MCreateShaderProgramJob.prototype.execute = function(){
     const context = this.context;
     const model = this.model;
     const layer = model.layer;
-    const vs = model.vs;
-    const fs = model.fs;
+    let vs = model.vs;
+    let fs = model.fs;
     const attributeLocations = model.attributeLocations;
     const material = model.material;
     const vertexPackage = model.vertexPackage;
+    if(context.webgl2 && Cesium.VERSION.length > 4){
+        const prefixVertex = [
+            'precision mediump sampler2DArray;',
+            '#define attribute in',
+            '#define varying out',
+            '#define texture2D texture'
+        ].join( '\n' ) + '\n';
+        const prefixFragment = [
+            '#define varying in',
+            //'layout(location = 0) out highp vec4 out_fragColor;',
+            '#define gl_FragColor out_FragColor',
+            '#define gl_FragDepthEXT gl_FragDepth',
+            '#define texture2D texture',
+            '#define textureCube texture',
+            '#define texture2DProj textureProj',
+            '#define texture2DLodEXT textureLod',
+            '#define texture2DProjLodEXT textureProjLod',
+            '#define textureCubeLodEXT textureLod',
+            '#define texture2DGradEXT textureGrad',
+            '#define texture2DProjGradEXT textureProjGrad',
+            '#define textureCubeGradEXT textureGrad'
+        ].join( '\n' ) + '\n';
+        vs = prefixVertex + vs;
+        fs = prefixFragment + fs;
+    }
     let vsNew = model.batchTable ? model.batchTable.getVertexShaderCallback()(vs) : vs;
 
     if(context.texturelod === undefined){
@@ -56,6 +86,10 @@ S3MCreateShaderProgramJob.prototype.execute = function(){
         vp.defines.push(ProgramDefines.VertexColor);
     }
 
+    if(material && material._RGBTOBGR){
+        fp.defines.push('RGBTOBGR');
+    }
+
     if(material && material.textures.length > 0) {
         vp.defines.push(ProgramDefines.COMPUTE_TEXCOORD);
         fp.defines.push(ProgramDefines.COMPUTE_TEXCOORD);
@@ -75,7 +109,7 @@ S3MCreateShaderProgramJob.prototype.execute = function(){
         vp.defines.push(ProgramDefines.Instance);
     }
 
-    if(vertexPackage.instanceMode === InstanceMode.BIM){
+    if(vertexPackage.instanceMode === InstanceMode.BIM || vertexPackage.instanceMode === InstanceMode.BIM2){
         vp.defines.push(ProgramDefines.InstanceBim);
     }
 
@@ -102,21 +136,46 @@ S3MCreateShaderProgramJob.prototype.execute = function(){
         }
     }
 
+    if(vertexPackage.textureCoordIsW && attributeLocations['TexCoord']){
+        vp.defines.push(ProgramDefines.TEXTURE_COORD_ONE_IS_W);
+    }
+     
+    if(Cesium.defined(vertexPackage.customVertexAttribute) && Cesium.defined(vertexPackage.customVertexAttribute['TextureCoordMatrix'])) {
+        vp.defines.push('USE_TextureCoordMatrix');
+    }
+
+    // meshopt
+    if(layer._vertexCompressionType === "MESHOPT") {
+        vp.defines.push('MeshOPT_Compress');
+    }
+
+    if(vertexPackage.textureCoordIsW && attributeLocations['aTexCoord0']){
+        vp.defines.push('TEXTURE_COORD_ONE_IS_W');
+    }
+
+    if(material.batchTable){
+        vp.defines.push(ProgramDefines.TextureAtlas);
+        fp.defines.push(ProgramDefines.TextureAtlas);
+    }
+
+    if(material.batchTableBake){
+        vp.defines.push(ProgramDefines.TextureAtlasSec);
+        fp.defines.push(ProgramDefines.TextureAtlasSec);
+    }
+
     if(Cesium.defined(model.arrIndexPackage) && model.arrIndexPackage.length > 0 && model.arrIndexPackage[0].primitiveType === 2){
         fp.defines.push(ProgramDefines.UseLineColor);
     }
 
-    if(Cesium.defined(vertexPackage.customVertexAttribute) && Cesium.defined(vertexPackage.customVertexAttribute['TextureCoordMatrix'])){
-        vp.defines.push('USE_TextureCoordMatrix');
+    if(isNeedAdjustColor(layer)){
+        fp.defines.push(ProgramDefines.ADJUST_COLOR);
     }
 
-    if(Cesium.defined(vertexPackage.customVertexAttribute) && Cesium.defined(vertexPackage.customVertexAttribute['VertexWeight'])){
-        vp.defines.push('USE_VertexWeight');
+    if(context.webgl2){
+        vp.defines.push('WEBGL2');
+        fp.defines.push('WEBGL2');
     }
-
-    if(layer._vertexCompressionType === 'MESHOPT') {
-        vp.defines.push('MeshOPT_Compress');
-    }
+  
 
     model.shaderProgram = Cesium.ShaderProgram.fromCache({
         context : context,
@@ -125,5 +184,6 @@ S3MCreateShaderProgramJob.prototype.execute = function(){
         attributeLocations : attributeLocations
     });
 };
+
 
 export default S3MCreateShaderProgramJob;

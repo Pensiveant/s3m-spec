@@ -1,94 +1,7 @@
 ﻿import ContentState from './Enum/ContentState.js';
-import RangeMode from './Enum/RangeMode.js';
-
-// 调度器
 function S3MLayerScheduler (){
     this._stack = [];
-}
-
-function sortComparator(a, b) {
-    if (b.distanceToCamera === 0 && a.distanceToCamera === 0) {
-        return b.centerZDepth - a.centerZDepth;
-    }
-
-    return b.distanceToCamera - a.distanceToCamera;
-}
-
-
-function updateChildren(layer, tile, stack, frameState) {
-    let i;
-    let children = tile.children;
-    let length = children.length;
-
-    for (i = 0; i < length; ++i) {
-        updateTile(frameState, layer, children[i]);
-    }
-
-    children.sort(sortComparator);
-
-    let refines = true;
-    let anyChildrenVisible = false;
-    let minIndex = -1;
-    let minimumPriority = Number.MAX_VALUE;
-    let checkChildRefins = true;
-
-    for (i = 0; i < length; ++i) {
-        let child = children[i];
-        if (child.foveatedFactor < minimumPriority) {
-            minIndex = i;
-            minimumPriority = child.foveatedFactor;
-        }
-
-        if (child.visible) {
-            stack.push(child);
-            anyChildrenVisible = true;
-        } else {
-            loadTile(layer, child, frameState);
-            touchTile(layer, child, frameState);
-            processTile(layer, child, frameState);
-        }
-
-        let childRefines = child.renderable;
-        if(checkChildRefins){
-            refines = refines && childRefines;
-        }
-    }
-
-    if (!anyChildrenVisible) {
-        refines = false;
-    }
-
-    if (minIndex !== -1) {
-        let minPriorityChild = children[minIndex];
-        minPriorityChild.wasMinPriorityChild = true;
-        let priorityHolder = (tile.wasMinPriorityChild || tile.isRootTile) &&
-        minimumPriority <= tile.priorityHolder.foveatedFactor ? tile.priorityHolder : tile;
-        priorityHolder.foveatedFactor = Math.min(minPriorityChild.foveatedFactor, priorityHolder.foveatedFactor);
-        priorityHolder.distanceToCamera = Math.min(minPriorityChild.distanceToCamera, priorityHolder.distanceToCamera);
-
-        for (i = 0; i < length; ++i) {
-            let child = children[i];
-            child.priorityHolder = priorityHolder;
-        }
-    }
-
-    return refines;
-}
-
-/**
- * 选择切片：将未渲染的切片，放入图层选择队列中
- * @param {*} layer 
- * @param {*} tile 
- * @param {*} frameState 
- * @returns 
- */
-function selectTile(layer, tile, frameState) {
-    if(tile.selectedFrame === frameState.frameNumber || !tile.renderable){
-        return ;
-    }
-
-    layer._selectedTiles.push(tile);
-    tile.selectedFrame = frameState.frameNumber;
+    this._selectPageLods = [];
 }
 
 /**
@@ -115,7 +28,7 @@ function loadTile(layer, tile, frameState) {
  * @returns 
  */
 function processTile(layer, tile, frameState) {
-    if(tile.processFrame === frameState.frameNumber || tile.contentState !== ContentState.READY || tile.renderable) {
+    if(tile.processFrame === frameState.frameNumber) {
         return ;
     }
 
@@ -139,39 +52,6 @@ function touchTile(layer, tile, frameState) {
     tile.touchedFrame = frameState.frameNumber;
 }
 
-/**
- * step5:
- * 更新瓦片的updatedVisibilityFrame属性
- * @param {*} layer 
- * @param {*} tile 
- * @param {*} frameState 
- * @returns 
- */
-function updateVisibility(layer, tile, frameState) {
-    if (tile.updatedVisibilityFrame === frameState.frameNumber) {
-        return;
-    }
-
-    tile.updatedVisibilityFrame = frameState.frameNumber;
-    tile.updateVisibility(frameState, layer);
-}
-
-/**
- * step4:
- * 
- * @param {*} frameState 
- * @param {*} layer 
- * @param {*} tile 
- */
-function updateTileVisibility(frameState, layer, tile) {
-    updateVisibility(layer, tile, frameState);
-}
-
-/**
- * step6:
- * @param {*} layer 
- * @param {*} tile 
- */
 function updateMinimumMaximumPriority(layer, tile) {
     layer._maximumPriority.distance = Math.max(tile.distanceToCamera, layer._maximumPriority.distance);
     layer._minimumPriority.distance = Math.min(tile.distanceToCamera, layer._minimumPriority.distance);
@@ -192,93 +72,12 @@ function updateMinimumMaximumPriority(layer, tile) {
  * @param {*} tile 
  */
 function updateTile(frameState, layer, tile) {
-    updateTileVisibility(frameState, layer, tile);
-    tile.wasMinPriorityChild = false;
-    tile.priorityHolder = tile;
+    if (tile.updatedVisibilityFrame !== frameState.frameNumber) {
+        tile.updatedVisibilityFrame = frameState.frameNumber;
+        tile.updateVisibility(frameState, layer);
+    }
+
     updateMinimumMaximumPriority(layer, tile);
-    tile.shouldSelect = false;
-    tile.selected = false;
-}
-
-/**
- * step8:
- * 根据LOD切换模式（RangeMode），判断子节点是否需要遍历
- * LOD切换模式由tile.lodRangeMode确定，在S3ModelParser.parsePageLOD()初始化
- * 
- * RangeMode.Distance(0)：当前切片到相机的距离*比例系数（layer.lodRangeScale）<设置值（tile.lodRangeData），才遍历子节点
- * RangeMode.Pixel(1)：当前切片的像素/*比例系数（layer.lodRangeScale）> 设置值（tile.lodRangeData），才遍历子节点
- * RangeMode.GeometryError(2)：几何容差模式，当前切片几何容差 > 16，才遍历子节点
- * 
- * tile.geometryError：通过S3MTile.getGeometryError()方法获取
- * @param {*} layer 
- * @param {*} tile 
- * @returns 
- */
-function canTraverse(layer, tile) {
-    if (tile.children.length === 0) {
-        return false;
-    }
-
-    if(tile.lodRangeMode === RangeMode.Pixel){
-        return tile.pixel / layer.lodRangeScale > tile.lodRangeData;
-    }
-    else if(tile.lodRangeMode === RangeMode.GeometryError) {
-        return tile.geometryError > 16;
-    }
-
-
-    return tile.distanceToCamera * layer.lodRangeScale < tile.lodRangeData;
-}
-
-/**
- * step7:
- * 遍历瓦片：1. 2.将需要加载的切片，放入layer请求切片队列中
- * @param {*} layer 
- * @param {*} stack 
- * @param {*} frameState 
- */
-function traversal(layer, stack, frameState) {
-    while(stack.length) {
-        let tile = stack.pop();
-        let parent = tile.parent;
-        let parentRefines = !Cesium.defined(parent) || parent.refines;
-        let refines = false;
-
-        if (canTraverse(layer, tile)) {
-            refines = updateChildren(layer, tile, stack, frameState) && parentRefines;
-        }
-
-        let stoppedRefining = !refines && parentRefines;
-
-        loadTile(layer, tile, frameState);
-        processTile(layer, tile, frameState);
-        if (stoppedRefining) {
-            selectTile(layer, tile, frameState);
-        }
-
-        touchTile(layer, tile, frameState);
-        tile.refines = refines;
-    }
-}
-
-/**
- * step2:
- * 遍历根节点瓦片：1.更新瓦片和图层的一些属性 ; 2.存储在_stack属性中
- * @param {*} layer 
- * @param {*} stack 
- * @param {*} frameState 
- */
-function selectRootTiles(layer, stack, frameState) {
-    stack.length = 0;
-    for(let i = 0,j = layer._rootTiles.length;i < j;i++){
-        let rootTile = layer._rootTiles[i];
-        updateTile(frameState, layer, rootTile);
-        if(!rootTile.visible) {
-            continue ;
-        }
-
-        stack.push(rootTile);
-    }
 }
 
 /**
@@ -296,9 +95,93 @@ function updatePriority(layer, frameState) {
 
 // step1: S3MTilesLayer.update() => S3MLayerScheduler.schedule()
 S3MLayerScheduler.prototype.schedule = function(layer, frameState) {
-    let stack = this._stack;
-    selectRootTiles(layer, stack, frameState);
-    traversal(layer, stack, frameState);
+    this._selectPageLods.length = 0;
+    this._stack.length = 0;
+    const selectPagelods = this._selectPageLods;
+    const stack = this._stack;
+
+    for(let i = 0,j = layer._rootTiles.length;i < j;i++){
+        const rootTile = layer._rootTiles[i];
+        updateTile(frameState, layer, rootTile);
+
+        if(!rootTile.visible){
+            continue ;
+        }
+
+        touchTile(layer, rootTile, frameState);
+
+        if(rootTile.contentState === ContentState.UNLOADED){
+            loadTile(layer, rootTile, frameState);
+            continue ;
+        }
+
+        if(rootTile.contentState === ContentState.LOADED) {
+            processTile(layer, rootTile, frameState);
+            continue ;
+        }
+
+        if(rootTile.contentState === ContentState.READY) {
+            stack.push(rootTile);
+        }
+
+    }
+
+    while(stack.length) {
+        const tile = stack.pop();
+        touchTile(layer, tile, frameState);
+
+        for(let i = 0,j = tile.pageLods.length;i < j;i++){
+            const pageLod = tile.pageLods[i];
+            if(pageLod.isLeafTile){
+                selectPagelods.push(pageLod);
+                continue ;
+            }
+
+            pageLod.update(frameState, layer);
+
+            if(!pageLod.canRefine){
+                selectPagelods.push(pageLod);
+                continue ;
+            }
+
+            let childTile = pageLod.childTile;
+            if(childTile === undefined){
+                pageLod.createChildTile(layer, tile);
+                childTile = pageLod.childTile;
+                touchTile(layer, childTile, frameState);
+                selectPagelods.push(pageLod);
+                continue ;
+            }
+
+            updateTile(frameState, layer, childTile);
+            if(!childTile.visible) {
+                continue ;
+            }
+
+            touchTile(layer, childTile, frameState);
+
+            if(childTile.contentState === ContentState.LOADED){
+                processTile(layer, childTile, frameState);
+                selectPagelods.push(pageLod);
+                continue;
+            }
+
+            if(childTile.contentState === ContentState.READY){
+                stack.push(childTile);
+                continue ;
+            }
+
+            loadTile(layer, childTile, frameState);
+            selectPagelods.push(pageLod);
+
+        }
+    }
+
+    for(let i = 0,j = selectPagelods.length;i < j;i++){
+        const pageLod = selectPagelods[i];
+        layer._renderQueue = layer._renderQueue.concat(pageLod.renderEntities);
+    }
+
     updatePriority(layer, frameState);
 };
 
